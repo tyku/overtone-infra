@@ -4,4 +4,4 @@
 *.key
 artifacts/
 .DS_Store
-
+.idea
