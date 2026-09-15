@@ -17,10 +17,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Validate configuration
         run: ./scripts/validate.sh
+      - id: versions
+        name: Calculate independent infra image versions
+        run: |
+          source scripts/lib.sh
+          echo "gateway_version=$(component_revision . nginx)" >> "$GITHUB_OUTPUT"
+          echo "swarm_check_version=$(component_revision . swarm-check scripts/swarm-check.sh)" >> "$GITHUB_OUTPUT"
       - name: Build gateway
-        run: docker build --build-arg APP_VERSION="$GITHUB_SHA" -f nginx/Dockerfile -t overtone-gateway:"$GITHUB_SHA" .
+        run: docker build --build-arg APP_VERSION="${{ steps.versions.outputs.gateway_version }}" -f nginx/Dockerfile -t overtone-gateway:"${{ steps.versions.outputs.gateway_version }}" .
       - name: Build swarm-check
-        run: docker build -f swarm-check/Dockerfile -t overtone-swarm-check:"$GITHUB_SHA" .
+        run: docker build --build-arg APP_VERSION="${{ steps.versions.outputs.swarm_check_version }}" -f swarm-check/Dockerfile -t overtone-swarm-check:"${{ steps.versions.outputs.swarm_check_version }}" .
       - name: Validate rendered Nginx config
         run: |
           mkdir -p local-certs
@@ -30,5 +36,4 @@ jobs:
             -e 'ADMIN_ALLOW_RULES=allow 127.0.0.1/32; deny all;' \
             -v "$PWD/local-certs/tls.crt:/run/secrets/tls_crt:ro" \
             -v "$PWD/local-certs/tls.key:/run/secrets/tls_key:ro" \
-            overtone-gateway:"$GITHUB_SHA" nginx -t
-
+            overtone-gateway:"${{ steps.versions.outputs.gateway_version }}" nginx -t

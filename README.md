@@ -41,8 +41,8 @@ Prerequisites: three Linux VMs with Docker Engine already installed, a registry 
 
 ```bash
 cp .env.example .env
-# Set strong local credentials, actual VM/external IPs, node hostnames and
-# immutable local-registry image tags such as registry.lan/overtone-api:<git-sha>.
+# Set strong local credentials, actual VM/external IPs and node hostnames.
+# Run `make versions`, then give every image its own returned content version.
 
 make cert
 make external-up-inference
@@ -55,7 +55,7 @@ export WORKER1_SSH=ubuntu@10.10.10.12 WORKER2_SSH=ubuntu@10.10.10.13
 ./scripts/lab/sync-and-deploy.sh
 ```
 
-`make build` only builds into the current Docker daemon. Push the four images when VM daemons cannot see that local image store. Image references using `latest` or non-SHA tags are rejected by deploy.
+`make versions` calculates four independent content versions from the exact files used by each image. Changing frontend source does not change the backend, gateway or swarm-check version. `make build` only builds into the current Docker daemon. Push the four images when VM daemons cannot see that local image store. Deploy rejects `latest`, non-hex version tags and a version identifier shared by two images; registry digests are also accepted.
 
 Run verification against the manager/load-balancer address:
 
@@ -111,7 +111,7 @@ Docker Secrets are immutable. For rotation, create a new `*_v2` name in `.env` a
 
 ## CI/CD
 
-`ci.yml` validates shell and both deployment models and builds infra images. `release.yml` checks out the current Overtone source, builds backend and the self-contained frontend from Dockerfiles owned by that application repository, builds the infra images, and pushes GHCR tags using the exact source Git SHA. Optional deploy uses protected-environment secrets `SWARM_ENV_FILE`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER` and read-only `GHCR_READ_TOKEN`; a private sibling repository also needs `OVERTONE_REPO_TOKEN`. `rollback.yml` is a manual, component-scoped rollback.
+`ci.yml` validates shell and both deployment models and builds independently versioned infra images. `release.yml` calculates a content version for each component, builds and pushes each image under its own tag, then pins deployment references to the four independent GHCR digests. Optional deploy uses protected-environment secrets `SWARM_ENV_FILE`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER` and read-only `GHCR_READ_TOKEN`; a private sibling repository also needs `OVERTONE_REPO_TOKEN`. `rollback.yml` is a manual, component-scoped rollback.
 
 No workflow uses `latest`, performs a cloud deploy by default, deletes a volume, or rewrites the application repositories. Required GitHub environment/secrets are documented inside each workflow and in [docs/CLOUD-RELEASE.md](docs/CLOUD-RELEASE.md).
 

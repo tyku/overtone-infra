@@ -14,7 +14,6 @@ fi
 env_file="$(mktemp)"
 trap 'rm -f "$env_file"' EXIT
 sed \
-  -e 's/change_me_git_sha/0123456789abcdef0123456789abcdef01234567/g' \
   -e 's/change_me/local_validation_secret/g' \
   "$root/.env.example" > "$env_file"
 

@@ -2,13 +2,14 @@
 set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/lib.sh
+source "$root/scripts/lib.sh"
 lab_compose=(docker compose -f "$root/scripts/lab/dind-compose.yml")
 external_compose=(docker compose -f "$root/external-local/compose.yml" -f "$root/scripts/lab/external-dind.override.yml" --profile inference)
-revision="$(git -C "$root/../overtone" rev-parse HEAD)"
-infra_revision="$(git -C "$root" rev-parse HEAD 2>/dev/null || printf '0123456789abcdef0123456789abcdef01234567')"
-if ! [[ "$infra_revision" =~ ^[0-9a-f]{40}$ ]]; then
-  infra_revision=0123456789abcdef0123456789abcdef01234567
-fi
+frontend_revision="$(component_revision "$root/../overtone" frontend)"
+backend_revision="$(component_revision "$root/../overtone" backend)"
+gateway_revision="$(component_revision "$root" nginx)"
+swarm_check_revision="$(component_revision "$root" swarm-check scripts/swarm-check.sh)"
 
 export POSTGRES_USER=overtone POSTGRES_PASSWORD=dind_postgres_password POSTGRES_DB=overtone
 export MEDSCRIBE_DATABASE_USER=medscribe MEDSCRIBE_DATABASE_PASSWORD=dind_medscribe_password MEDSCRIBE_DATABASE_NAME=medscribe
@@ -44,18 +45,18 @@ if [[ "$("${worker2[@]}" info --format '{{.Swarm.LocalNodeState}}')" == inactive
   "${worker2[@]}" swarm join --token "$token" 172.30.30.21:2377 >/dev/null
 fi
 
-gateway_ref="registry:5000/overtone-gateway:${infra_revision}"
-check_ref="registry:5000/overtone-swarm-check:${infra_revision}"
-frontend_ref="registry:5000/overtone-frontend:${revision}"
-backend_ref="registry:5000/overtone-backend:${revision}"
+gateway_ref="registry:5000/overtone-gateway:${gateway_revision}"
+check_ref="registry:5000/overtone-swarm-check:${swarm_check_revision}"
+frontend_ref="registry:5000/overtone-frontend:${frontend_revision}"
+backend_ref="registry:5000/overtone-backend:${backend_revision}"
 
-docker build --build-arg "APP_VERSION=$infra_revision" -f "$root/nginx/Dockerfile" -t "localhost:15000/overtone-gateway:${infra_revision}" "$root"
-docker build -f "$root/swarm-check/Dockerfile" -t "localhost:15000/overtone-swarm-check:${infra_revision}" "$root"
+docker build --build-arg "APP_VERSION=$gateway_revision" -f "$root/nginx/Dockerfile" -t "localhost:15000/overtone-gateway:${gateway_revision}" "$root"
+docker build --build-arg "APP_VERSION=$swarm_check_revision" -f "$root/swarm-check/Dockerfile" -t "localhost:15000/overtone-swarm-check:${swarm_check_revision}" "$root"
 docker buildx build --load -f "$root/../overtone/frontend/Dockerfile" \
-  --build-arg "APP_VERSION=$revision" -t "localhost:15000/overtone-frontend:${revision}" "$root/../overtone/frontend"
-docker build --target backend --build-arg "APP_VERSION=$revision" -f "$root/../overtone/backend/Dockerfile" \
-  -t "localhost:15000/overtone-backend:${revision}" "$root/../overtone/backend"
-for image in overtone-gateway:${infra_revision} overtone-swarm-check:${infra_revision} overtone-frontend:${revision} overtone-backend:${revision}; do
+  --build-arg "APP_VERSION=$frontend_revision" -t "localhost:15000/overtone-frontend:${frontend_revision}" "$root/../overtone/frontend"
+docker build --target backend --build-arg "APP_VERSION=$backend_revision" -f "$root/../overtone/backend/Dockerfile" \
+  -t "localhost:15000/overtone-backend:${backend_revision}" "$root/../overtone/backend"
+for image in overtone-gateway:${gateway_revision} overtone-swarm-check:${swarm_check_revision} overtone-frontend:${frontend_revision} overtone-backend:${backend_revision}; do
   docker push "localhost:15000/$image" >/dev/null
 done
 

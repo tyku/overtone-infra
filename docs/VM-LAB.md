@@ -20,7 +20,7 @@ export WORKER1_SSH=ubuntu@10.10.10.12 WORKER2_SSH=ubuntu@10.10.10.13
 
 Run PostgreSQL, MinIO and optionally the inference mock on a fourth reachable host or on the workstation with `EXTERNAL_BIND_ADDRESS` set to its private address. Set `DATABASE_URL`, `S3_ENDPOINT` and `INFERENCE_GRPC_ADDRESS` to that address—not to a Compose service name or loopback address.
 
-Build/push images to a registry reachable by all VMs, set immutable image tags in `.env`, generate local TLS once, then:
+Run `make versions`, assign each returned content version only to its matching image in `.env`, then build/push the four independent image references to a registry reachable by all VMs. Generate local TLS once, then:
 
 ```bash
 ./scripts/lab/sync-and-deploy.sh
@@ -30,4 +30,3 @@ make alert-test
 ```
 
 The node-drain test deliberately demonstrates the selected persistence tradeoff: API/Redis stop while `worker-1` is drained, then recover on the same node with the same local volumes. It does not delete volumes.
-

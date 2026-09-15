@@ -9,6 +9,6 @@
 7. Replace `ADMIN_ALLOW_RULES` with office/VPN CIDRs. `allow all` is never a cloud setting.
 8. Configure the worker's `INFERENCE_GRPC_ADDRESS` to the private worker address and reverse-tunnel port. On the SSH server set `GatewayPorts clientspecified`, restrict the tunnel account to forwarding, and firewall the port to Swarm nodes.
 9. Configure Kuma monitors for public HTTPS, `/api/health`, and a Push monitor for `swarm-check`; attach notification channels and run `make alert-test`.
-10. Take volume/database backups, run deploy, smoke and fault tests, then record the deployed Git SHA tags. Rollback is `make rollback COMPONENT=...`.
+10. Take volume/database backups, run deploy, smoke and fault tests, then record each independently deployed image digest. Rollback is `make rollback COMPONENT=...`.
 
 Never run `docker stack rm` as an upgrade mechanism and never add `-v` to the external Compose shutdown; both choices protect user data.

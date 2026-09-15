@@ -4,8 +4,9 @@ SHELL := /usr/bin/env bash
 ENV_FILE ?= $(CURDIR)/.env
 export ENV_FILE
 
-.PHONY: help validate cert external-up external-up-inference external-health external-down build deploy smoke fault-test alert-test dind-test rollback ps
+.PHONY: help versions validate cert external-up external-up-inference external-health external-down build deploy smoke fault-test alert-test dind-test rollback ps
 help:
+	@echo "versions               print independent content versions for every image"
 	@echo "validate               validate shell, Compose and Swarm YAML"
 	@echo "cert                   generate a local self-signed TLS certificate"
 	@echo "external-up            start PostgreSQL and MinIO outside Swarm"
@@ -17,6 +18,9 @@ help:
 	@echo "alert-test             send a deliberate DOWN event to Kuma"
 	@echo "dind-test              isolated three-daemon Swarm integration test"
 	@echo "rollback COMPONENT=all rollback all or backend/frontend/gateway"
+
+versions:
+	@./scripts/image-versions.sh
 
 validate:
 	./scripts/validate.sh
