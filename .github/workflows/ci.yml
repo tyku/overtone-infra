@@ -1,0 +1,34 @@
+name: infra-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Validate configuration
+        run: ./scripts/validate.sh
+      - name: Build gateway
+        run: docker build --build-arg APP_VERSION="$GITHUB_SHA" -f nginx/Dockerfile -t overtone-gateway:"$GITHUB_SHA" .
+      - name: Build swarm-check
+        run: docker build -f swarm-check/Dockerfile -t overtone-swarm-check:"$GITHUB_SHA" .
+      - name: Validate rendered Nginx config
+        run: |
+          mkdir -p local-certs
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout local-certs/tls.key -out local-certs/tls.crt -subj /CN=localhost
+          docker run --rm \
+            -e PUBLIC_SERVER_NAME=localhost \
+            -e 'ADMIN_ALLOW_RULES=allow 127.0.0.1/32; deny all;' \
+            -v "$PWD/local-certs/tls.crt:/run/secrets/tls_crt:ro" \
+            -v "$PWD/local-certs/tls.key:/run/secrets/tls_key:ro" \
+            overtone-gateway:"$GITHUB_SHA" nginx -t
+

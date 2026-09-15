@@ -1,0 +1,109 @@
+name: build-push-and-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      overtone_ref:
+        description: Overtone branch, tag, or SHA to build
+        required: true
+        default: main
+      deploy:
+        description: Deploy to the protected production environment after push
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      overtone_sha: ${{ steps.refs.outputs.overtone_sha }}
+      infra_sha: ${{ steps.refs.outputs.infra_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: infra
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/overtone
+          ref: ${{ inputs.overtone_ref }}
+          path: overtone
+          token: ${{ secrets.OVERTONE_REPO_TOKEN || github.token }}
+      - id: refs
+        run: |
+          echo "overtone_sha=$(git -C overtone rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "infra_sha=$(git -C infra rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: overtone/backend
+          file: overtone/backend/Dockerfile
+          target: backend
+          push: true
+          build-args: APP_VERSION=${{ steps.refs.outputs.overtone_sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/overtone-backend:${{ steps.refs.outputs.overtone_sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: overtone/frontend
+          file: overtone/frontend/Dockerfile
+          push: true
+          build-args: APP_VERSION=${{ steps.refs.outputs.overtone_sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/overtone-frontend:${{ steps.refs.outputs.overtone_sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: infra
+          file: infra/nginx/Dockerfile
+          push: true
+          build-args: APP_VERSION=${{ steps.refs.outputs.infra_sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/overtone-gateway:${{ steps.refs.outputs.infra_sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: infra
+          file: infra/swarm-check/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/overtone-swarm-check:${{ steps.refs.outputs.infra_sha }}
+
+  deploy:
+    if: inputs.deploy
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH identity
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Prepare release environment
+        env:
+          SWARM_ENV_FILE: ${{ secrets.SWARM_ENV_FILE }}
+          OVERTONE_SHA: ${{ needs.build.outputs.overtone_sha }}
+          INFRA_SHA: ${{ needs.build.outputs.infra_sha }}
+        run: |
+          printf '%s' "$SWARM_ENV_FILE" > .env
+          sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/overtone-backend:${OVERTONE_SHA}|" .env
+          sed -i "s|^FRONTEND_IMAGE=.*|FRONTEND_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/overtone-frontend:${OVERTONE_SHA}|" .env
+          sed -i "s|^GATEWAY_IMAGE=.*|GATEWAY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/overtone-gateway:${INFRA_SHA}|" .env
+          sed -i "s|^SWARM_CHECK_IMAGE=.*|SWARM_CHECK_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER}/overtone-swarm-check:${INFRA_SHA}|" .env
+      - name: Copy and deploy on manager
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+        run: |
+          rsync -az --delete --exclude .git --exclude local-certs ./ "$DEPLOY_USER@$DEPLOY_HOST:/opt/overtone-infra/"
+          printf '%s' "$GHCR_READ_TOKEN" | ssh "$DEPLOY_USER@$DEPLOY_HOST" "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin && cd /opt/overtone-infra && ./scripts/deploy.sh"

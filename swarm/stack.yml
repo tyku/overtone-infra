@@ -1,0 +1,259 @@
+services:
+  gateway:
+    image: ${GATEWAY_IMAGE}
+    environment:
+      PUBLIC_SERVER_NAME: ${PUBLIC_SERVER_NAME}
+      ADMIN_ALLOW_RULES: ${ADMIN_ALLOW_RULES}
+    secrets:
+      - source: tls_crt
+        target: tls_crt
+      - source: tls_key
+        target: tls_key
+    ports:
+      - {target: 80, published: "${HTTP_PORT}", protocol: tcp, mode: ingress}
+      - {target: 443, published: "${HTTPS_PORT}", protocol: tcp, mode: ingress}
+    networks: [edge, frontend, app]
+    deploy:
+      replicas: 2
+      placement:
+        constraints: [node.role == worker]
+        max_replicas_per_node: 1
+      update_config: &rolling_update
+        parallelism: 1
+        delay: 10s
+        # Exactly two workers plus max_replicas_per_node=1 leaves no temporary
+        # third slot; stop-first preserves one gateway/frontend replica.
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config: &rolling_rollback
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+        monitor: 30s
+      restart_policy: &restart_policy
+        condition: any
+        delay: 5s
+        max_attempts: 5
+        window: 120s
+      resources:
+        reservations: {cpus: "0.10", memory: 32M}
+        limits: {cpus: "0.50", memory: 128M}
+
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    read_only: true
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs: {size: 16777216, mode: 1777}
+    networks: [frontend]
+    deploy:
+      replicas: 2
+      placement:
+        constraints: [node.role == worker]
+        max_replicas_per_node: 1
+      update_config: *rolling_update
+      rollback_config: *rolling_rollback
+      restart_policy: *restart_policy
+      resources:
+        reservations: {cpus: "0.05", memory: 16M}
+        limits: {cpus: "0.25", memory: 64M}
+
+  api:
+    image: ${BACKEND_IMAGE}
+    entrypoint: ["/bin/sh", "/run/configs/start-backend.sh", "api"]
+    environment: &backend_environment
+      NODE_ENV: production
+      PORT: "3000"
+      TRUST_PROXY_HOPS: "1"
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS}
+      FFMPEG_PATH: ffmpeg
+      FFMPEG_TIMEOUT_MS: ${FFMPEG_TIMEOUT_MS}
+      HTTP_UPLOAD_TIMEOUT_MS: ${HTTP_UPLOAD_TIMEOUT_MS}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES}
+      MAX_AUDIO_PARTS: ${MAX_AUDIO_PARTS}
+      RECORDINGS_DIR: /var/lib/overtone/recordings
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      REDIS_URL: redis://redis:6379
+      INFERENCE_GRPC_ADDRESS: ${INFERENCE_GRPC_ADDRESS}
+      INFERENCE_GRPC_TLS: ${INFERENCE_GRPC_TLS}
+      INFERENCE_LLM_BACKEND: ${INFERENCE_LLM_BACKEND}
+      INFERENCE_SPECIALTY: ${INFERENCE_SPECIALTY}
+    configs:
+      - {source: backend_entrypoint, target: /run/configs/start-backend.sh, mode: 0555}
+    secrets: &backend_secrets
+      - database_url
+      - worker_database_url
+      - s3_access_key_id
+      - s3_secret_access_key
+      - redis_password
+    volumes:
+      - api_recordings:/var/lib/overtone/recordings
+      - type: tmpfs
+        target: /tmp
+        tmpfs: {size: 268435456, mode: 1777}
+    networks: [app]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    stop_grace_period: 45s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == worker, node.labels.overtone.api == true]
+      update_config: *rolling_update
+      rollback_config: *rolling_rollback
+      restart_policy: *restart_policy
+      resources:
+        reservations: {cpus: "0.25", memory: 192M}
+        limits: {cpus: "1.50", memory: 1G}
+
+  worker:
+    image: ${BACKEND_IMAGE}
+    entrypoint: ["/bin/sh", "/run/configs/start-backend.sh", "worker"]
+    environment:
+      <<: *backend_environment
+    configs:
+      - {source: backend_entrypoint, target: /run/configs/start-backend.sh, mode: 0555}
+    secrets: *backend_secrets
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs: {size: 268435456, mode: 1777}
+    networks: [app]
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 45s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == worker, node.labels.overtone.inference == true]
+      update_config: *rolling_update
+      rollback_config: *rolling_rollback
+      restart_policy: *restart_policy
+      resources:
+        reservations: {cpus: "0.25", memory: 128M}
+        limits: {cpus: "1.00", memory: 512M}
+
+  redis:
+    image: redis:7.4.5-alpine3.21
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy noeviction
+    secrets: [redis_password]
+    volumes: [redis_data:/data]
+    networks: [app]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$(cat /run/secrets/redis_password)\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 30s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == worker, node.labels.overtone.redis == true]
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config: *rolling_rollback
+      restart_policy: *restart_policy
+      resources:
+        reservations: {cpus: "0.10", memory: 128M}
+        limits: {cpus: "0.50", memory: 384M}
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1.23.16-alpine
+    volumes: [uptime_kuma_data:/app/data]
+    networks: [monitoring, app]
+    ports:
+      - {target: 3001, published: "${KUMA_PORT}", protocol: tcp, mode: host}
+    healthcheck:
+      test: ["CMD", "node", "extra/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+        monitor: 60s
+      rollback_config: *rolling_rollback
+      restart_policy: *restart_policy
+      resources:
+        reservations: {cpus: "0.10", memory: 96M}
+        limits: {cpus: "0.50", memory: 384M}
+
+  swarm-check:
+    image: ${SWARM_CHECK_IMAGE}
+    environment:
+      STACK_NAME: ${STACK_NAME}
+      CHECK_INTERVAL_SECONDS: "60"
+      DISK_WARN_PERCENT: "85"
+      EXPECTED_SERVICES: gateway=2 frontend=2 api=1 worker=1 redis=1 uptime-kuma=1
+    secrets: [uptime_push_url]
+    volumes:
+      - {type: bind, source: /var/run/docker.sock, target: /var/run/docker.sock, read_only: true}
+    networks: [monitoring]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy: *restart_policy
+      resources:
+        reservations: {cpus: "0.05", memory: 32M}
+        limits: {cpus: "0.25", memory: 128M}
+
+networks:
+  edge:
+    driver: overlay
+    attachable: false
+  frontend:
+    driver: overlay
+    attachable: false
+    driver_opts: {encrypted: "true"}
+  app:
+    driver: overlay
+    attachable: false
+    driver_opts: {encrypted: "true"}
+  monitoring:
+    driver: overlay
+    attachable: false
+    driver_opts: {encrypted: "true"}
+
+volumes:
+  api_recordings: {name: overtone_api_recordings}
+  redis_data: {name: overtone_redis_data}
+  uptime_kuma_data: {name: overtone_uptime_kuma_data}
+
+configs:
+  backend_entrypoint:
+    file: ../scripts/start-backend.sh
+
+secrets:
+  database_url: {external: true, name: "${DATABASE_URL_SECRET}"}
+  worker_database_url: {external: true, name: "${WORKER_DATABASE_URL_SECRET}"}
+  s3_access_key_id: {external: true, name: "${S3_ACCESS_KEY_ID_SECRET}"}
+  s3_secret_access_key: {external: true, name: "${S3_SECRET_ACCESS_KEY_SECRET}"}
+  redis_password: {external: true, name: "${REDIS_PASSWORD_SECRET}"}
+  tls_crt: {external: true, name: "${TLS_CERT_SECRET}"}
+  tls_key: {external: true, name: "${TLS_KEY_SECRET}"}
+  uptime_push_url: {external: true, name: "${UPTIME_PUSH_URL_SECRET}"}

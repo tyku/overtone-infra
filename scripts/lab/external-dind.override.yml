@@ -1,0 +1,21 @@
+services:
+  postgres:
+    networks:
+      default:
+        ipv4_address: 172.30.30.10
+  minio:
+    networks:
+      default:
+        ipv4_address: 172.30.30.11
+  minio-init:
+    networks: [default]
+  inference-mock:
+    networks:
+      default:
+        ipv4_address: 172.30.30.12
+
+networks:
+  default:
+    external: true
+    name: overtone-dind-lab
+

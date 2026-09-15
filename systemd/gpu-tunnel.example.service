@@ -1,0 +1,30 @@
+[Unit]
+Description=Overtone reverse SSH tunnel to medical-scribe gRPC
+After=network-online.target medical-scribe.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=medscribe
+EnvironmentFile=/etc/overtone/gpu-tunnel.env
+ExecStart=/usr/bin/autossh -M 0 -NT \
+  -o BatchMode=yes \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=20 \
+  -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile=/var/lib/medscribe/.ssh/known_hosts \
+  -i /var/lib/medscribe/.ssh/overtone_tunnel \
+  -R ${REMOTE_BIND_ADDRESS}:${REMOTE_TUNNEL_PORT}:127.0.0.1:${MEDSCRIBE_GRPC_PORT} \
+  ${SSH_USER}@${SWARM_WORKER_HOST}
+Restart=always
+RestartSec=5s
+StartLimitIntervalSec=0
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
+
