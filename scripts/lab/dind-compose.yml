@@ -1,15 +1,6 @@
 name: overtone-dind-lab
 
 services:
-  registry:
-    image: registry:2.8.3
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${LAB_REGISTRY_PORT:-15000}:5000"
-    networks:
-      lab:
-        ipv4_address: 172.30.30.5
-
   manager-1:
     image: overtone-dind-node:test
     build:
@@ -17,7 +8,7 @@ services:
       dockerfile: scripts/lab/dind.Dockerfile
     privileged: true
     hostname: manager-1
-    command: ["--insecure-registry=registry:5000", "--storage-driver=overlay2"]
+    command: ["--storage-driver=overlay2"]
     environment:
       DOCKER_TLS_CERTDIR: ""
     ports:
@@ -42,7 +33,7 @@ services:
       dockerfile: scripts/lab/dind.Dockerfile
     privileged: true
     hostname: worker-1
-    command: ["--insecure-registry=registry:5000", "--storage-driver=overlay2"]
+    command: ["--storage-driver=overlay2"]
     environment:
       DOCKER_TLS_CERTDIR: ""
     volumes:
@@ -63,7 +54,7 @@ services:
       dockerfile: scripts/lab/dind.Dockerfile
     privileged: true
     hostname: worker-2
-    command: ["--insecure-registry=registry:5000", "--storage-driver=overlay2"]
+    command: ["--storage-driver=overlay2"]
     environment:
       DOCKER_TLS_CERTDIR: ""
     volumes:

@@ -25,6 +25,6 @@ grep -Eiq '^x-overtone-api-version: 1\r?$' "$api_headers"
 index="$(curl "${curl_args[@]}" "$base_url/")"
 grep -Eqi '<div[^>]+id="root"|<title>' <<<"$index"
 
-status="$(curl "${curl_args[@]}" --output /dev/null --write-out '%{http_code}' "$base_url/admin/not-a-route")"
+status="$(curl "${curl_args[@]}" --no-fail --output /dev/null --write-out '%{http_code}' "$base_url/admin/not-a-route")"
 [[ "$status" == 404 ]] || { echo "expected /admin/* to return 404, got $status" >&2; exit 1; }
 echo "smoke passed: gateway, frontend, API and admin route policy"

@@ -18,8 +18,10 @@ export S3_ACCESS_KEY_ID=dindapp S3_SECRET_ACCESS_KEY=dind_app_password_123
 export POSTGRES_PORT=25432 S3_PORT=29000 S3_CONSOLE_PORT=29001
 export POSTGRES_VOLUME_NAME=overtone_dind_external_postgres_v1 MINIO_VOLUME_NAME=overtone_dind_external_minio_v1
 export MEDICAL_SCRIBE_DIR=../../medical-scribe INFERENCE_PORT=25051
+image_archive=""
 
 cleanup_containers() {
+  [[ -z "$image_archive" ]] || rm -f "$image_archive"
   docker exec overtone-dind-lab-worker-1-1 docker swarm leave >/dev/null 2>&1 || true
   docker exec overtone-dind-lab-worker-2-1 docker swarm leave >/dev/null 2>&1 || true
   docker exec overtone-dind-lab-manager-1-1 docker swarm leave --force >/dev/null 2>&1 || true
@@ -45,20 +47,25 @@ if [[ "$("${worker2[@]}" info --format '{{.Swarm.LocalNodeState}}')" == inactive
   "${worker2[@]}" swarm join --token "$token" 172.30.30.21:2377 >/dev/null
 fi
 
-gateway_ref="registry:5000/overtone-gateway:${gateway_revision}"
-check_ref="registry:5000/overtone-swarm-check:${swarm_check_revision}"
-frontend_ref="registry:5000/overtone-frontend:${frontend_revision}"
-backend_ref="registry:5000/overtone-backend:${backend_revision}"
+gateway_ref="overtone-gateway:${gateway_revision}"
+check_ref="overtone-swarm-check:${swarm_check_revision}"
+frontend_ref="overtone-frontend:${frontend_revision}"
+backend_ref="overtone-backend:${backend_revision}"
 
-docker build --build-arg "APP_VERSION=$gateway_revision" -f "$root/nginx/Dockerfile" -t "localhost:15000/overtone-gateway:${gateway_revision}" "$root"
-docker build --build-arg "APP_VERSION=$swarm_check_revision" -f "$root/swarm-check/Dockerfile" -t "localhost:15000/overtone-swarm-check:${swarm_check_revision}" "$root"
+docker build --build-arg "APP_VERSION=$gateway_revision" -f "$root/nginx/Dockerfile" -t "$gateway_ref" "$root"
+docker build --build-arg "APP_VERSION=$swarm_check_revision" -f "$root/swarm-check/Dockerfile" -t "$check_ref" "$root"
 docker buildx build --load -f "$root/../overtone/frontend/Dockerfile" \
-  --build-arg "APP_VERSION=$frontend_revision" -t "localhost:15000/overtone-frontend:${frontend_revision}" "$root/../overtone/frontend"
+  --build-arg "APP_VERSION=$frontend_revision" -t "$frontend_ref" "$root/../overtone/frontend"
 docker build --target backend --build-arg "APP_VERSION=$backend_revision" -f "$root/../overtone/backend/Dockerfile" \
-  -t "localhost:15000/overtone-backend:${backend_revision}" "$root/../overtone/backend"
-for image in overtone-gateway:${gateway_revision} overtone-swarm-check:${swarm_check_revision} overtone-frontend:${frontend_revision} overtone-backend:${backend_revision}; do
-  docker push "localhost:15000/$image" >/dev/null
+  -t "$backend_ref" "$root/../overtone/backend"
+
+image_archive="$(mktemp)"
+docker save -o "$image_archive" "$gateway_ref" "$check_ref" "$frontend_ref" "$backend_ref"
+for daemon in overtone-dind-lab-manager-1-1 overtone-dind-lab-worker-1-1 overtone-dind-lab-worker-2-1; do
+  docker exec -i "$daemon" docker load < "$image_archive" >/dev/null
 done
+rm -f "$image_archive"
+image_archive=""
 
 stage="$(mktemp -d)"
 cp -R "$root" "$stage/infra"
@@ -68,6 +75,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
   -subj /CN=localhost -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' >/dev/null 2>&1
 cat > "$stage/infra/.env" <<EOF
 STACK_NAME=overtone
+STACK_RESOLVE_IMAGE=never
 GATEWAY_IMAGE=$gateway_ref
 FRONTEND_IMAGE=$frontend_ref
 BACKEND_IMAGE=$backend_ref

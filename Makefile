@@ -4,7 +4,7 @@ SHELL := /usr/bin/env bash
 ENV_FILE ?= $(CURDIR)/.env
 export ENV_FILE
 
-.PHONY: help versions validate cert external-up external-up-inference external-health external-down build deploy smoke fault-test alert-test dind-test rollback ps
+.PHONY: help versions validate cert external-up external-up-inference external-health external-down build push deploy smoke fault-test alert-test dind-test rollback ps
 help:
 	@echo "versions               print independent content versions for every image"
 	@echo "validate               validate shell, Compose and Swarm YAML"
@@ -12,6 +12,7 @@ help:
 	@echo "external-up            start PostgreSQL and MinIO outside Swarm"
 	@echo "external-up-inference  also start external medical-scribe mock"
 	@echo "build                  build four local application/infra images"
+	@echo "push                   authenticate and push four images to the configured registry"
 	@echo "deploy                 label nodes, create missing secrets and deploy"
 	@echo "smoke                  test gateway -> frontend/API routing"
 	@echo "fault-test             restart, rolling update, rollback, node drain"
@@ -42,6 +43,9 @@ external-down:
 
 build:
 	./scripts/build-local.sh
+
+push:
+	./scripts/push-images.sh
 
 deploy:
 	./scripts/deploy.sh

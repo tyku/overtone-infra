@@ -37,11 +37,12 @@ The source audit is in [docs/AUDIT.md](docs/AUDIT.md).
 
 ## Local three-VM test
 
-Prerequisites: three Linux VMs with Docker Engine already installed, a registry reachable by all nodes, `docker`, `ssh`, `rsync`, `curl`, and `openssl` on the workstation. The helper does not install system packages. VM/network details are in [docs/VM-LAB.md](docs/VM-LAB.md).
+Prerequisites: three Linux VMs with Docker Engine already installed, an authenticated remote registry reachable by the workstation and all nodes, `docker`, `ssh`, `rsync`, `curl`, and `openssl` on the workstation. The lab never starts an ad-hoc registry or enables insecure-registry mode. VM/network details are in [docs/VM-LAB.md](docs/VM-LAB.md).
 
 ```bash
 cp .env.example .env
 # Set strong local credentials, actual VM/external IPs and node hostnames.
+# Set REGISTRY_HOST/REGISTRY_USERNAME and remote-registry image references.
 # Run `make versions`, then give every image its own returned content version.
 
 make cert
@@ -49,25 +50,33 @@ make external-up-inference
 make external-health
 make build
 
+# Keep tokens out of .env. The push token needs package write permission.
+export REGISTRY_PUSH_TOKEN=...
+make push
+unset REGISTRY_PUSH_TOKEN
+
 export MANAGER_SSH=ubuntu@10.10.10.11 MANAGER_ADDR=10.10.10.11
 export WORKER1_SSH=ubuntu@10.10.10.12 WORKER2_SSH=ubuntu@10.10.10.13
+# A read-only package token is sufficient for manager/Swarm pulls.
+export REGISTRY_PULL_TOKEN=...
 ./scripts/lab/init-swarm.sh
 ./scripts/lab/sync-and-deploy.sh
+unset REGISTRY_PULL_TOKEN
 ```
 
-`make versions` calculates four independent content versions from the exact files used by each image. Changing frontend source does not change the backend, gateway or swarm-check version. `make build` only builds into the current Docker daemon. Push the four images when VM daemons cannot see that local image store. Deploy rejects `latest`, non-hex version tags and a version identifier shared by two images; registry digests are also accepted.
+`make versions` calculates four independent content versions from the exact files used by each image. Changing frontend source does not change the backend, gateway or swarm-check version. `make build` only builds into the current Docker daemon; `make push` authenticates to `REGISTRY_HOST` and pushes all four references. `sync-and-deploy.sh` authenticates the manager without copying the token into `.env`, and Swarm forwards that pull authorization to workers via `--with-registry-auth`. Deploy rejects `latest`, non-hex version tags and a version identifier shared by two images; registry digests are also accepted.
 
 Run verification against the manager/load-balancer address:
 
 ```bash
 BASE_URL=https://10.10.10.11 TLS_INSECURE=true make smoke
-make fault-test
-make alert-test
+ssh -t "$MANAGER_SSH" 'cd /opt/overtone-infra && ./scripts/fault-test.sh'
+ssh -t "$MANAGER_SSH" 'cd /opt/overtone-infra && ./scripts/uptime-alert-test.sh'
 ```
 
 The fault suite forces an API restart, performs a one-at-a-time frontend rolling update, rolls it back, drains the stateful worker, verifies that local data does not migrate accidentally, restores the node and reruns smoke. It never removes volumes.
 
-When VM tooling is unavailable, `make dind-test` exercises the same stack against three isolated privileged Docker daemons. This is useful CI-grade multi-node coverage, but it is not represented as a substitute for the final three-VM network/firewall test.
+When VM tooling is unavailable, `make dind-test` exercises the same stack against three isolated privileged Docker daemons. It loads test images directly into those daemons and does not start a registry. This is useful CI-grade multi-node coverage, but it is not represented as a substitute for the final three-VM network/firewall test.
 
 To stop only local external containers while preserving data:
 
@@ -111,7 +120,7 @@ Docker Secrets are immutable. For rotation, create a new `*_v2` name in `.env` a
 
 ## CI/CD
 
-`ci.yml` validates shell and both deployment models and builds independently versioned infra images. `release.yml` calculates a content version for each component, builds and pushes each image under its own tag, then pins deployment references to the four independent GHCR digests. Optional deploy uses protected-environment secrets `SWARM_ENV_FILE`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER` and read-only `GHCR_READ_TOKEN`; a private sibling repository also needs `OVERTONE_REPO_TOKEN`. `rollback.yml` is a manual, component-scoped rollback.
+`ci.yml` validates shell and both deployment models and builds independently versioned infra images. `release.yml` calculates a content version for each component, builds and pushes each image under its own tag, then pins deployment references to the four independent Docker Hub digests. Configure repository variable `DOCKERHUB_USERNAME` and repository secret `DOCKERHUB_TOKEN` for build/push. Optional deploy uses the protected `production` environment secrets `SWARM_ENV_FILE`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER` and `DOCKERHUB_TOKEN`; the environment token may be a separate read-only token. A private sibling repository also needs `OVERTONE_REPO_TOKEN`. `rollback.yml` is a manual, component-scoped rollback.
 
 No workflow uses `latest`, performs a cloud deploy by default, deletes a volume, or rewrites the application repositories. Required GitHub environment/secrets are documented inside each workflow and in [docs/CLOUD-RELEASE.md](docs/CLOUD-RELEASE.md).
 

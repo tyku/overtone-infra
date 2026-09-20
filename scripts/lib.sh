@@ -29,6 +29,31 @@ require_value() {
   [[ "${!name}" != *change_me* ]] || { echo "replace placeholder in variable: $name" >&2; return 1; }
 }
 
+require_registry_config() {
+  require_value REGISTRY_HOST
+  require_value REGISTRY_USERNAME
+  [[ "$REGISTRY_HOST" =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || {
+    echo "REGISTRY_HOST must be a registry hostname with an optional port: $REGISTRY_HOST" >&2
+    return 1
+  }
+  [[ "$REGISTRY_USERNAME" =~ ^[A-Za-z0-9_.-]+$ ]] || {
+    echo "REGISTRY_USERNAME contains unsupported characters" >&2
+    return 1
+  }
+}
+
+require_registry_images() {
+  local name value
+  for name in "$@"; do
+    value="${!name:-}"
+    require_value "$name"
+    [[ "$value" == "$REGISTRY_HOST/"* ]] || {
+      echo "$name must use configured registry $REGISTRY_HOST: $value" >&2
+      return 1
+    }
+  done
+}
+
 require_immutable_image() {
   local name="$1" value="${!1:-}"
   require_value "$name"

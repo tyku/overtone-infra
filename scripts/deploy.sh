@@ -69,7 +69,13 @@ export DATABASE_URL_SECRET WORKER_DATABASE_URL_SECRET S3_ACCESS_KEY_ID_SECRET
 export S3_SECRET_ACCESS_KEY_SECRET REDIS_PASSWORD_SECRET TLS_CERT_SECRET TLS_KEY_SECRET
 export UPTIME_PUSH_URL_SECRET
 
-docker stack deploy --with-registry-auth --prune --detach=true \
+resolve_image="${STACK_RESOLVE_IMAGE:-always}"
+case "$resolve_image" in
+  always|changed|never) ;;
+  *) echo "STACK_RESOLVE_IMAGE must be always, changed or never" >&2; exit 1 ;;
+esac
+
+docker stack deploy --with-registry-auth --resolve-image "$resolve_image" --prune --detach=true \
   --compose-file "$root/swarm/stack.yml" "$STACK_NAME"
 "$root/scripts/wait-stack.sh" "$STACK_NAME" "${DEPLOY_TIMEOUT_SECONDS:-300}"
 if [[ "${SKIP_SMOKE:-false}" != true ]]; then

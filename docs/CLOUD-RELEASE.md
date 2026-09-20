@@ -1,6 +1,6 @@
 # Cloud release checklist
 
-1. Provision one manager and two workers with stable private networking and the Swarm ports listed in `VM-LAB.md`.
+1. Provision one manager and two workers with stable private networking and the Swarm ports listed in `VM-LAB.md`. Give every node outbound HTTPS access to the authenticated remote registry; never enable an insecure registry.
 2. Put a load balancer/firewall in front of 80/443. Keep Docker, SSH, Kuma and external data-service ports private.
 3. Replace the local self-signed TLS secrets with a real certificate, or terminate TLS at the cloud load balancer and retain trusted TLS on the internal hop.
 4. Set `DATABASE_URL`/`WORKER_DATABASE_URL` to managed PostgreSQL. Use direct or session-pool mode; transaction pooling breaks the backend's advisory-lock semantics. Require TLS in the URL.
@@ -9,6 +9,6 @@
 7. Replace `ADMIN_ALLOW_RULES` with office/VPN CIDRs. `allow all` is never a cloud setting.
 8. Configure the worker's `INFERENCE_GRPC_ADDRESS` to the private worker address and reverse-tunnel port. On the SSH server set `GatewayPorts clientspecified`, restrict the tunnel account to forwarding, and firewall the port to Swarm nodes.
 9. Configure Kuma monitors for public HTTPS, `/api/health`, and a Push monitor for `swarm-check`; attach notification channels and run `make alert-test`.
-10. Take volume/database backups, run deploy, smoke and fault tests, then record each independently deployed image digest. Rollback is `make rollback COMPONENT=...`.
+10. Set GitHub Actions repository variable `DOCKERHUB_USERNAME` and repository secret `DOCKERHUB_TOKEN` for image builds. In the protected `production` environment, store `SWARM_ENV_FILE` and a `DOCKERHUB_TOKEN` with pull-only access for manager deployment. The environment secret overrides the repository secret for the deploy job. Keep tokens outside `.env`, take volume/database backups, run deploy, smoke and fault tests, then record each independently deployed image digest. Rollback is `make rollback COMPONENT=...`.
 
 Never run `docker stack rm` as an upgrade mechanism and never add `-v` to the external Compose shutdown; both choices protect user data.
