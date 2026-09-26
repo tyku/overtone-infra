@@ -9,6 +9,30 @@
 7. Replace `ADMIN_ALLOW_RULES` with office/VPN CIDRs. `allow all` is never a cloud setting.
 8. Configure the worker's `INFERENCE_GRPC_ADDRESS` to the private worker address and reverse-tunnel port. On the SSH server set `GatewayPorts clientspecified`, restrict the tunnel account to forwarding, and firewall the port to Swarm nodes.
 9. Configure Kuma monitors for public HTTPS, `/api/health`, and a Push monitor for `swarm-check`; attach notification channels and run `make alert-test`.
-10. Set GitHub Actions repository variable `DOCKERHUB_USERNAME` and repository secret `DOCKERHUB_TOKEN` for image builds. In the protected `production` environment, store `SWARM_ENV_FILE` and a `DOCKERHUB_TOKEN` with pull-only access for manager deployment. The environment secret overrides the repository secret for the deploy job. Keep tokens outside `.env`, take volume/database backups, run deploy, smoke and fault tests, then record each independently deployed image digest. Rollback is `make rollback COMPONENT=...`.
+10. In the `overtone` code repository, create and protect the GitHub Environment named `production`; configure required reviewers and deployment branch/tag rules. A push to `main` automatically builds and pushes images, but production deploy runs only through `workflow_dispatch` when its `deploy` boolean is selected. Rollback is also manual and component-scoped.
+11. Configure these values on the `overtone` repository:
+    - variable `DOCKERHUB_USERNAME` — Docker Hub namespace used by both build and deploy;
+    - secret `DOCKERHUB_TOKEN` — build/push credential with permission to push all four images;
+    - secret `OVERTONE_INFRA_REPO_TOKEN` — read-only credential for checkout of the private `overtone-infra` repository.
+12. Configure these values on the `overtone` repository's protected `production` Environment:
+    - variable `BASTION_HOST`, or same-named secret — exact public DNS name or IP of the bastion;
+    - variable `BASTION_USER` — `overtone_deploy`;
+    - variable `MANAGER_PRIVATE_HOST`, or same-named secret — exact private DNS name or IP of the Swarm manager;
+    - variable `DEPLOY_USER` — `overtone_deploy`;
+    - secret `DEPLOY_SSH_KEY` — dedicated CI private key authorized for `overtone_deploy` on both hops;
+    - secret `DEPLOY_KNOWN_HOSTS` — pinned host-key records for both exact host names/addresses;
+    - secret `DOCKERHUB_TOKEN` — a distinct pull-only credential, not the repository build/push token;
+    - secret `SWARM_ENV_FILE` — the complete production `.env` content, without registry tokens.
+13. Collect host keys out of band, never from the workflow. From a trusted provider console or an already authenticated administration path, read each server's SSH host public key and calculate its fingerprint with `ssh-keygen -lf`. Compare that fingerprint with a value obtained over an independent trusted channel. Only after it matches, create `known_hosts` records whose first fields are exactly the configured `BASTION_HOST` and `MANAGER_PRIVATE_HOST`, for example:
+
+    ```text
+    bastion.example.com ssh-ed25519 AAAA...
+    10.0.1.10 ssh-ed25519 AAAA...
+    ```
+
+    Store both complete records in `DEPLOY_KNOWN_HOSTS`. Do not use runner-side `ssh-keyscan`, TOFU, or `StrictHostKeyChecking=no`.
+14. Authorize the dedicated CI public key for the restricted `overtone_deploy` account on the bastion and manager. The workflows construct `overtone-bastion-ci` and `overtone-manager-ci` aliases with strict pinned-key checking; the manager alias reaches its private address with `ProxyJump overtone-bastion-ci`. `rsync --delete` has a literal destination of `/opt/overtone-infra/`, preserves the existing `.git` and `local-certs` excludes, and cannot be redirected by a GitHub value to another path.
+15. Keep registry tokens outside `.env`. The deploy sends the production pull-only token only over SSH standard input to `docker login --password-stdin`, uses a temporary `DOCKER_CONFIG` on the manager, and removes it on exit. Swarm forwards that short-lived login authorization to workers through the existing `docker stack deploy --with-registry-auth` operation.
+16. Take volume/database backups, run the gated deploy, smoke and fault tests, then record each independently deployed image digest. Rollback remains `make rollback COMPONENT=...` (`backend`, `frontend`, `gateway`, or `all`) and performs its existing smoke test.
 
 Never run `docker stack rm` as an upgrade mechanism and never add `-v` to the external Compose shutdown; both choices protect user data.
