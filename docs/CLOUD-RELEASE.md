@@ -21,8 +21,7 @@
     - variable `DEPLOY_USER` — `overtone_deploy`;
     - secret `DEPLOY_SSH_KEY` — dedicated CI private key authorized for `overtone_deploy` on both hops;
     - secret `DEPLOY_KNOWN_HOSTS` — pinned host-key records for both exact host names/addresses;
-    - secret `DOCKERHUB_TOKEN` — a distinct pull-only credential, not the repository build/push token;
-    - secret `SWARM_ENV_FILE` — the complete production `.env` content, without registry tokens.
+    - secret `DOCKERHUB_TOKEN` — a distinct pull-only credential, not the repository build/push token.
 13. Collect host keys out of band, never from the workflow. From a trusted provider console or an already authenticated administration path, read each server's SSH host public key and calculate its fingerprint with `ssh-keygen -lf`. Compare that fingerprint with a value obtained over an independent trusted channel. Only after it matches, create `known_hosts` records whose first fields are exactly the configured `BASTION_HOST` and `MANAGER_PRIVATE_HOST`, for example:
 
     ```text
@@ -31,8 +30,9 @@
     ```
 
     Store both complete records in `DEPLOY_KNOWN_HOSTS`. Do not use runner-side `ssh-keyscan`, TOFU, or `StrictHostKeyChecking=no`.
-14. Authorize the dedicated CI public key for the restricted `overtone_deploy` account on the bastion and manager. The workflows construct `overtone-bastion-ci` and `overtone-manager-ci` aliases with strict pinned-key checking; the manager alias reaches its private address with `ProxyJump overtone-bastion-ci`. `rsync --delete` has a literal destination of `/opt/overtone-infra/`, preserves the existing `.git` and `local-certs` excludes, and cannot be redirected by a GitHub value to another path.
-15. Keep registry tokens outside `.env`. The deploy sends the production pull-only token only over SSH standard input to `docker login --password-stdin`, uses a temporary `DOCKER_CONFIG` on the manager, and removes it on exit. Swarm forwards that short-lived login authorization to workers through the existing `docker stack deploy --with-registry-auth` operation.
-16. Take volume/database backups, run the gated deploy, smoke and fault tests, then record each independently deployed image digest. Rollback remains `make rollback COMPONENT=...` (`backend`, `frontend`, `gateway`, or `all`) and performs its existing smoke test.
+14. Before the first deploy, place the completed production `.env` on the Swarm manager at `/opt/overtone-infra/.env`. Start from `.env.example`, replace local settings and secrets, and provision the file through a trusted administration channel. It must be owned by `overtone_deploy` with mode `0600`; keep a protected backup. The release workflow fails if this file is absent or has unsafe ownership or permissions. It never copies `.env` from GitHub: `rsync --delete` targets only `/opt/overtone-infra/` and excludes/protects the manager's root `.env`, alongside the existing `.git` and `local-certs` excludes. After syncing code, the manager updates only registry metadata and the four immutable image digest references in its `.env`.
+15. Authorize the dedicated CI public key for the restricted `overtone_deploy` account on the bastion and manager. The workflows construct `overtone-bastion-ci` and `overtone-manager-ci` aliases with strict pinned-key checking; the manager alias reaches its private address with `ProxyJump overtone-bastion-ci`.
+16. Keep registry tokens outside `.env`. The deploy sends the production pull-only token only over SSH standard input to `docker login --password-stdin`, uses a temporary `DOCKER_CONFIG` on the manager, and removes it on exit. Swarm forwards that short-lived login authorization to workers through the existing `docker stack deploy --with-registry-auth` operation.
+17. Take volume/database backups, run the gated deploy, smoke and fault tests, then record each independently deployed image digest. Rollback remains `make rollback COMPONENT=...` (`backend`, `frontend`, `gateway`, or `all`) and performs its existing smoke test.
 
 Never run `docker stack rm` as an upgrade mechanism and never add `-v` to the external Compose shutdown; both choices protect user data.
