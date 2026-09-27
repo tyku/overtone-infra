@@ -20,7 +20,7 @@ Mac -> SSH bastion -> worker private IP:8443 -> admin HTTPS (/admin, /api/admin)
                    \-> manager private IP:3001 -> Uptime Kuma
 ```
 
-The single manager is an explicit demo availability compromise. Gateway and frontend use one replica per worker. Overlay traffic on application/monitoring networks is encrypted. The admin listener is published on worker port 8443 for bastion forwarding only; public 80/443 return 404 for admin paths. Provider firewall rules must block public access to worker 8443 and manager 3001; Docker-published ports may bypass UFW. See [docs/ADMIN-ACCESS.md](docs/ADMIN-ACCESS.md).
+The single manager is an explicit demo availability compromise. Gateway and frontend use one replica per worker. Overlay traffic on application/monitoring networks is encrypted. The admin listener is published on worker port 8443 for bastion forwarding only; public 80/443 return 404 for admin paths. The Ansible-managed pre-DNAT host guard must block public access to worker 8443 and manager 3001 before deployment; UFW alone may not stop Docker-published ports. Verify the guard on the hosts and test the public ports from outside after deployment. See [docs/ADMIN-ACCESS.md](docs/ADMIN-ACCESS.md).
 
 The frontend image is built and owned by `../overtone/frontend`: its internal unprivileged Nginx serves immutable application assets on port 8080. In Swarm it runs with a read-only root filesystem and a bounded `/tmp` tmpfs. This static origin is distinct from the infrastructure-owned TLS gateway.
 

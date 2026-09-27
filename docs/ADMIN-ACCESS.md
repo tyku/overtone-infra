@@ -17,18 +17,22 @@ Before deployment:
 2. Set `PUBLIC_SERVER_NAME=priemo.tech`,
    `ADMIN_SERVER_NAME=admin.priemo.tech` and
    `ADMIN_BASTION_CIDR=10.16.0.6/32` in the manager's `.env`. The CIDR is an
-   additional Nginx source check, not a substitute for the provider firewall.
-3. At Beget's provider firewall/security groups, deny worker TCP 8443 and
-   manager TCP 3001 from the public network; permit each only from the bastion
-   private IP over the private network. Do this **before** publishing 8443.
-   Docker-published ports can bypass UFW. Keep public HAProxy 80/443 unchanged.
-4. Apply the matching local `overtone-ansible` SSH and UFW changes to bastion,
-   workers and manager, after reviewing the playbooks. The assistant must not
-   execute Ansible or connect to these servers; the operator runs it.
+   additional Nginx source check, not a substitute for the host firewall.
+3. Before publishing 8443/3001, apply the `overtone-ansible` firewall playbook
+   to both workers and the manager. Its pre-DNAT guard permits worker 8443
+   and manager 3001 on each host's private IP only from bastion `10.16.0.6`
+   on the private interface. It drops other traffic to those private IPs and
+   public-interface traffic to these ports, including IPv6, without affecting
+   overlay service destinations. UFW also permits bastion privately.
+   Docker-published ports can bypass ordinary UFW rules; keep public HAProxy
+   80/443 unchanged.
+4. Apply the matching local `overtone-ansible` SSH changes to bastion after
+   reviewing the playbook. The assistant must not execute Ansible or connect
+   to these servers; the operator runs it.
 
-After provider firewall rules are in place, the operator can review Ansible's
-changes from the `overtone-ansible` directory. Keep an existing SSH session
-and provider console available before the real runs:
+Before stack deployment, the operator reviews Ansible's changes from the
+`overtone-ansible` directory. Keep an existing SSH session and provider console
+available before the real runs:
 
 ```bash
 ansible-playbook -i inventories/production/hosts.yml playbooks/30-ssh-policy.yml \
@@ -38,7 +42,9 @@ ansible-playbook -i inventories/production/hosts.yml playbooks/20-firewall.yml \
 ```
 
 After reviewing the output, repeat those commands without `--check --diff`.
-The UFW role only adds rules; if old wide allow rules already exist, inspect
+The firewall role adds UFW allowances and a persistent raw/PREROUTING drop for
+the public private-service ports. Verify its iptables and ip6tables checks
+succeed on every Swarm node. If old wide allow rules already exist, inspect
 and remove them explicitly. Then run the read-only `playbooks/90-audit.yml`
 yourself. No production commands are run by the assistant.
 

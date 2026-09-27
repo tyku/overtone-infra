@@ -26,7 +26,7 @@ jobs:
       - name: Build gateway
         run: docker build --build-arg APP_VERSION="${{ steps.versions.outputs.gateway_version }}" -f nginx/Dockerfile -t overtone-gateway:"${{ steps.versions.outputs.gateway_version }}" .
       - name: Build swarm-check
-        run: docker build --build-arg APP_VERSION="${{ steps.versions.outputs.swarm_check_version }}" -f swarm-check/Dockerfile -t overtone-swarm-check:"${{ steps.versions.outputs.swarm_check_version }}" .
+        run: docker build --platform linux/amd64 --build-arg APP_VERSION="${{ steps.versions.outputs.swarm_check_version }}" -f swarm-check/Dockerfile -t overtone-swarm-check:"${{ steps.versions.outputs.swarm_check_version }}" .
       - name: Validate rendered Nginx config
         run: |
           mkdir -p local-certs

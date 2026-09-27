@@ -27,7 +27,7 @@ docker buildx build --load --file "$overtone_dir/backend/Dockerfile" --target ba
   --tag "$backend_image" "$overtone_dir/backend"
 docker buildx build --load --file "$root/nginx/Dockerfile" --build-arg "APP_VERSION=$gateway_revision" \
   --tag "$gateway_image" "$root"
-docker buildx build --load --file "$root/swarm-check/Dockerfile" \
+docker buildx build --load --platform linux/amd64 --file "$root/swarm-check/Dockerfile" \
   --build-arg "APP_VERSION=$swarm_check_revision" \
   --tag "$swarm_check_image" "$root"
 
