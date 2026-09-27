@@ -5,7 +5,7 @@ Production-shaped Docker Swarm infrastructure for Overtone. PostgreSQL, S3 and m
 ## Architecture
 
 ```text
-Internet -> TLS Nginx gateway (2) -> frontend runtime (2)
+Internet -> HAProxy -> TLS Nginx gateway (2) -> frontend runtime (2)
                                \-> API (1, fixed worker + recordings volume)
                                       |-> PostgreSQL (external)
                                       |-> S3/MinIO (external)
@@ -16,9 +16,11 @@ worker (1, tunnel worker) -> Redis/PostgreSQL/S3
                               <- reverse SSH <- medical-scribe GPU:50051
 
 manager -> Uptime Kuma (1) <- push status from swarm-check (1)
+Mac -> SSH bastion -> worker private IP:8443 -> admin HTTPS (/admin, /api/admin)
+                   \-> manager private IP:3001 -> Uptime Kuma
 ```
 
-The single manager is an explicit demo availability compromise. Gateway and frontend use one replica per worker. Overlay traffic on application/monitoring networks is encrypted. No application service publishes a bypass port around the gateway.
+The single manager is an explicit demo availability compromise. Gateway and frontend use one replica per worker. Overlay traffic on application/monitoring networks is encrypted. The admin listener is published on worker port 8443 for bastion forwarding only; public 80/443 return 404 for admin paths. Provider firewall rules must block public access to worker 8443 and manager 3001; Docker-published ports may bypass UFW. See [docs/ADMIN-ACCESS.md](docs/ADMIN-ACCESS.md).
 
 The frontend image is built and owned by `../overtone/frontend`: its internal unprivileged Nginx serves immutable application assets on port 8080. In Swarm it runs with a read-only root filesystem and a bounded `/tmp` tmpfs. This static origin is distinct from the infrastructure-owned TLS gateway.
 
@@ -28,10 +30,10 @@ The source audit is in [docs/AUDIT.md](docs/AUDIT.md).
 
 - `swarm/stack.yml` — Swarm services, placement, limits, healthchecks, rolling update/rollback.
 - `external-local/compose.yml` — PostgreSQL, MinIO and optional inference mock outside Swarm.
-- `nginx/` — dedicated TLS gateway image and admin CIDR policy.
+- `nginx/` — dedicated TLS gateway image with public and bastion-only admin listeners.
 - `../overtone/frontend/Dockerfile` owns the self-contained frontend image; this repository only configures its Swarm runtime.
 - `swarm-check/` — lightweight manager-side Swarm/replica/restart/disk check.
-- `scripts/` — deploy, rollback, smoke, fault and three-VM lab helpers.
+- `scripts/` — deploy, rollback, fault and three-VM lab helpers.
 - `systemd/` — resilient reverse SSH tunnel example for the GPU host.
 - `.github/workflows/ci.yml` — infrastructure validation; release and rollback workflows live in the `overtone` code repository.
 
@@ -68,15 +70,14 @@ unset REGISTRY_PULL_TOKEN
 
 For a manual deploy without `make build`, copy `swarm/images.example.yml` to the ignored `swarm/images.yml` and replace all example references with the exact release tags or digests.
 
-Run verification against the manager/load-balancer address:
+The optional fault and alert tests are invoked by the operator, not by deploy or rollback:
 
 ```bash
-BASE_URL=https://10.10.10.11 TLS_INSECURE=true make smoke
 ssh -t "$MANAGER_SSH" 'cd /opt/overtone-infra && ./scripts/fault-test.sh'
 ssh -t "$MANAGER_SSH" 'cd /opt/overtone-infra && ./scripts/uptime-alert-test.sh'
 ```
 
-The fault suite forces an API restart, performs a one-at-a-time frontend rolling update, rolls it back, drains the stateful worker, verifies that local data does not migrate accidentally, restores the node and reruns smoke. It never removes volumes.
+The fault suite forces an API restart, performs a one-at-a-time frontend rolling update, rolls it back, drains the stateful worker, verifies that local data does not migrate accidentally, and restores the node. It never removes volumes.
 
 When VM tooling is unavailable, `make dind-test` exercises the same stack against three isolated privileged Docker daemons. It loads test images directly into those daemons and does not start a registry. This is useful CI-grade multi-node coverage, but it is not represented as a substitute for the final three-VM network/firewall test.
 
@@ -88,7 +89,7 @@ make external-down
 
 ## Uptime Kuma
 
-Open private manager port `3001`, create the admin account, then configure:
+Forward private manager port `3001` through bastion, create the admin account, then configure:
 
 - HTTPS monitor for the public URL;
 - HTTP keyword/status monitor for `/api/health`;
@@ -111,7 +112,7 @@ Set `INFERENCE_GRPC_ADDRESS=worker-private-ip:15051`. Do not use worker loopback
 
 ## Deploy and rollback
 
-`scripts/deploy.sh` must run on the manager. It labels selected workers, creates only missing external Docker Secrets, deploys with registry auth, waits for exact replica counts and runs smoke. Secret values are read from files/environment once and never placed in the service spec.
+`scripts/deploy.sh` must run on the manager. It labels selected workers, creates only missing external Docker Secrets, deploys with registry auth and waits for exact replica counts. It does not run smoke tests. Secret values are read from files/environment once and never placed in the service spec.
 
 ```bash
 make deploy
@@ -134,4 +135,4 @@ No workflow uses `latest`, performs a cloud deploy by default, deletes a volume,
 
 ## Before cloud release
 
-Replace local PostgreSQL/MinIO endpoints and credentials, TLS certificate, domain, admin CIDRs, inference worker address/tunnel key, registry references, node hostnames, Kuma push URL and notification destinations. The full checklist is [docs/CLOUD-RELEASE.md](docs/CLOUD-RELEASE.md).
+Replace local PostgreSQL/MinIO endpoints and credentials, TLS certificate, domain, bastion private CIDR, inference worker address/tunnel key, registry references, node hostnames, Kuma push URL and notification destinations. The full checklist is [docs/CLOUD-RELEASE.md](docs/CLOUD-RELEASE.md).

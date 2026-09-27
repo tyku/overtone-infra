@@ -2,7 +2,8 @@ services:
   gateway:
     environment:
       PUBLIC_SERVER_NAME: ${PUBLIC_SERVER_NAME}
-      ADMIN_ALLOW_RULES: ${ADMIN_ALLOW_RULES}
+      ADMIN_SERVER_NAME: ${ADMIN_SERVER_NAME}
+      ADMIN_BASTION_CIDR: ${ADMIN_BASTION_CIDR}
     secrets:
       - source: tls_crt
         target: tls_crt
@@ -11,6 +12,7 @@ services:
     ports:
       - {target: 80, published: "${HTTP_PORT}", protocol: tcp, mode: ingress}
       - {target: 443, published: "${HTTPS_PORT}", protocol: tcp, mode: ingress}
+      - {target: 8443, published: 8443, protocol: tcp, mode: host}
     networks: [edge, frontend, app]
     deploy:
       replicas: 2

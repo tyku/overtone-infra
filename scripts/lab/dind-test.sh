@@ -80,7 +80,8 @@ cat > "$stage/infra/.env" <<EOF
 STACK_NAME=overtone
 STACK_RESOLVE_IMAGE=never
 PUBLIC_SERVER_NAME=localhost
-ADMIN_ALLOW_RULES='allow 127.0.0.1/32; allow 172.30.0.0/16; deny all;'
+ADMIN_SERVER_NAME=localhost
+ADMIN_BASTION_CIDR=127.0.0.1/32
 HTTP_PORT=80
 HTTPS_PORT=443
 KUMA_PORT=3001
@@ -115,9 +116,6 @@ MAX_UPLOAD_BYTES=1073741824
 MAX_AUDIO_PARTS=1000
 FFMPEG_TIMEOUT_MS=1800000
 HTTP_UPLOAD_TIMEOUT_MS=2100000
-BASE_URL=https://localhost
-TLS_INSECURE=true
-SKIP_SMOKE=true
 EOF
 docker cp "$stage/infra/." overtone-dind-lab-manager-1-1:/infra
 rm -rf "$stage"

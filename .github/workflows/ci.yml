@@ -33,7 +33,8 @@ jobs:
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout local-certs/tls.key -out local-certs/tls.crt -subj /CN=localhost
           docker run --rm \
             -e PUBLIC_SERVER_NAME=localhost \
-            -e 'ADMIN_ALLOW_RULES=allow 127.0.0.1/32; deny all;' \
+            -e ADMIN_SERVER_NAME=localhost \
+            -e ADMIN_BASTION_CIDR=127.0.0.1/32 \
             -v "$PWD/local-certs/tls.crt:/run/secrets/tls_crt:ro" \
             -v "$PWD/local-certs/tls.key:/run/secrets/tls_key:ro" \
             overtone-gateway:"${{ steps.versions.outputs.gateway_version }}" nginx -t

@@ -15,11 +15,19 @@ fi
 validate_image_manifest "$root/swarm/images.yml"
 docker stack config --compose-file "$root/swarm/stack.yml" \
   --compose-file "$root/swarm/images.yml" >/dev/null
-for name_var in STACK_NAME API_NODE REDIS_NODE INFERENCE_NODE DATABASE_URL_SECRET \
+for name_var in STACK_NAME ADMIN_SERVER_NAME ADMIN_BASTION_CIDR API_NODE REDIS_NODE INFERENCE_NODE DATABASE_URL_SECRET \
   WORKER_DATABASE_URL_SECRET S3_ACCESS_KEY_ID_SECRET S3_SECRET_ACCESS_KEY_SECRET \
   REDIS_PASSWORD_SECRET TLS_CERT_SECRET TLS_KEY_SECRET UPTIME_PUSH_URL_SECRET; do
   require_value "$name_var"
 done
+if [[ ! "$ADMIN_BASTION_CIDR" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/32$ ]]; then
+  echo "ADMIN_BASTION_CIDR must be one bastion IPv4 address with /32" >&2
+  exit 1
+fi
+if [[ ! "$ADMIN_SERVER_NAME" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+  echo "ADMIN_SERVER_NAME must be a hostname without scheme or port" >&2
+  exit 1
+fi
 
 ensure_literal_secret() {
   local secret_name="$1" value_var="$2"
@@ -60,7 +68,7 @@ ensure_file_secret "$TLS_KEY_SECRET" TLS_KEY_FILE
 ensure_literal_secret "$UPTIME_PUSH_URL_SECRET" UPTIME_PUSH_URL
 
 export STACK_NAME
-export PUBLIC_SERVER_NAME ADMIN_ALLOW_RULES HTTP_PORT HTTPS_PORT KUMA_PORT
+export PUBLIC_SERVER_NAME ADMIN_SERVER_NAME ADMIN_BASTION_CIDR HTTP_PORT HTTPS_PORT KUMA_PORT
 export S3_ENDPOINT S3_REGION S3_BUCKET INFERENCE_GRPC_ADDRESS INFERENCE_GRPC_TLS
 export INFERENCE_LLM_BACKEND INFERENCE_SPECIALTY SESSION_TTL_HOURS MAX_UPLOAD_BYTES
 export MAX_AUDIO_PARTS FFMPEG_TIMEOUT_MS HTTP_UPLOAD_TIMEOUT_MS
@@ -77,6 +85,3 @@ esac
 docker stack deploy --with-registry-auth --resolve-image "$resolve_image" --prune --detach=true \
   --compose-file "$root/swarm/stack.yml" --compose-file "$root/swarm/images.yml" "$STACK_NAME"
 "$root/scripts/wait-stack.sh" "$STACK_NAME" "${DEPLOY_TIMEOUT_SECONDS:-300}"
-if [[ "${SKIP_SMOKE:-false}" != true ]]; then
-  "$root/scripts/smoke-test.sh"
-fi

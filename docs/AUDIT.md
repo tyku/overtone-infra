@@ -16,11 +16,11 @@ Audited on 2026-09-10. Runtime code was treated as authoritative.
 
 - gRPC listens on port 50051 and the service needs its own PostgreSQL connection plus S3 access.
 - It stays outside Swarm. `external-local/compose.yml` can start its existing mock image for connectivity tests.
-- The current mock accepts pipeline calls but may still return `MODEL_LOAD_FAILED` for model-dependent full-pipeline work; this is an application fixture limitation, not hidden by the infrastructure smoke test.
+- The current mock accepts pipeline calls but may still return `MODEL_LOAD_FAILED` for model-dependent full-pipeline work; this is an application fixture limitation.
 
 ## `../local-stack`
 
-- Established gateway behavior was retained: 1025 MiB request limit, 35-minute upstream timeout, exact `/admin` SPA route, `/admin/*` 404 behavior and IP filtering for both page/API.
+- Established upload limits and upstream timeouts were retained. Admin page/API now use a separate bastion-only HTTPS listener; public listeners return 404 for admin paths.
 - PostgreSQL/MinIO volume names in this repository are new and are never deleted by the supplied commands.
 - Redis moved into Swarm as required; PostgreSQL, MinIO and inference did not.
 

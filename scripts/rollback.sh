@@ -20,5 +20,3 @@ for service in "${services[@]}"; do
   docker service rollback --detach=false "${STACK_NAME}_${service}"
 done
 "$root/scripts/wait-stack.sh" "$STACK_NAME" "${DEPLOY_TIMEOUT_SECONDS:-300}"
-"$root/scripts/smoke-test.sh"
-

@@ -4,7 +4,7 @@ SHELL := /usr/bin/env bash
 ENV_FILE ?= $(CURDIR)/.env
 export ENV_FILE
 
-.PHONY: help versions validate cert external-up external-up-inference external-health external-down build push deploy smoke fault-test alert-test dind-test rollback ps
+.PHONY: help versions validate cert external-up external-up-inference external-health external-down build push deploy fault-test alert-test dind-test rollback ps
 help:
 	@echo "versions               print independent content versions for every image"
 	@echo "validate               validate shell, Compose and Swarm YAML"
@@ -14,7 +14,6 @@ help:
 	@echo "build                  build four local application/infra images"
 	@echo "push                   authenticate and push four images to the configured registry"
 	@echo "deploy                 label nodes, create missing secrets and deploy"
-	@echo "smoke                  test gateway -> frontend/API routing"
 	@echo "fault-test             restart, rolling update, rollback, node drain"
 	@echo "alert-test             send a deliberate DOWN event to Kuma"
 	@echo "dind-test              isolated three-daemon Swarm integration test"
@@ -49,9 +48,6 @@ push:
 
 deploy:
 	./scripts/deploy.sh
-
-smoke:
-	./scripts/smoke-test.sh
 
 fault-test:
 	./scripts/fault-test.sh

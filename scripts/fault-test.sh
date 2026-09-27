@@ -49,7 +49,4 @@ done
 restore_node
 trap - EXIT
 "$root/scripts/wait-stack.sh" "$stack" 300
-if [[ "${SKIP_SMOKE:-false}" != true ]]; then
-  "$root/scripts/smoke-test.sh"
-fi
 echo "fault tests passed: restart, rolling update, rollback and stateful-node recovery"

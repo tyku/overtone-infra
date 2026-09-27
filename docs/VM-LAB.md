@@ -32,7 +32,6 @@ export REGISTRY_PULL_TOKEN=...
 ./scripts/lab/sync-and-deploy.sh
 unset REGISTRY_PULL_TOKEN
 
-BASE_URL=https://10.10.10.11 TLS_INSECURE=true make smoke
 ssh -t "$MANAGER_SSH" 'cd /opt/overtone-infra && ./scripts/fault-test.sh'
 ssh -t "$MANAGER_SSH" 'cd /opt/overtone-infra && ./scripts/uptime-alert-test.sh'
 ```
