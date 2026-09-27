@@ -10,7 +10,11 @@ env_file="${ENV_FILE:-$root/.env}"
 [[ -f "$env_file" ]] || { echo "missing $env_file" >&2; exit 1; }
 load_env
 require_registry_config
-require_registry_images GATEWAY_IMAGE FRONTEND_IMAGE BACKEND_IMAGE SWARM_CHECK_IMAGE
+validate_image_manifest "$root/swarm/images.yml"
+images="$(image_manifest_refs "$root/swarm/images.yml" | LC_ALL=C sort -u)"
+while IFS= read -r image; do
+  require_registry_image_refs "$image"
+done <<< "$images"
 : "${REGISTRY_PULL_TOKEN:?export REGISTRY_PULL_TOKEN; never store it in .env}"
 
 printf '%s' "$REGISTRY_PULL_TOKEN" |

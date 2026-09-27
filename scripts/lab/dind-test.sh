@@ -69,6 +69,9 @@ image_archive=""
 
 stage="$(mktemp -d)"
 cp -R "$root" "$stage/infra"
+GATEWAY_REF="$gateway_ref" FRONTEND_REF="$frontend_ref" BACKEND_REF="$backend_ref" \
+  SWARM_CHECK_REF="$check_ref" \
+  docker stack config --compose-file "$root/swarm/images.template.yml" > "$stage/infra/swarm/images.yml"
 mkdir -p "$stage/infra/local-certs"
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
   -keyout "$stage/infra/local-certs/tls.key" -out "$stage/infra/local-certs/tls.crt" \
@@ -76,10 +79,6 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
 cat > "$stage/infra/.env" <<EOF
 STACK_NAME=overtone
 STACK_RESOLVE_IMAGE=never
-GATEWAY_IMAGE=$gateway_ref
-FRONTEND_IMAGE=$frontend_ref
-BACKEND_IMAGE=$backend_ref
-SWARM_CHECK_IMAGE=$check_ref
 PUBLIC_SERVER_NAME=localhost
 ADMIN_ALLOW_RULES='allow 127.0.0.1/32; allow 172.30.0.0/16; deny all;'
 HTTP_PORT=80

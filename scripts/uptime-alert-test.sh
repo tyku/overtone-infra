@@ -7,6 +7,7 @@ source "$root/scripts/lib.sh"
 load_env
 
 job="${STACK_NAME}_alert-test"
+swarm_check_image="$(docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "${STACK_NAME}_swarm-check")"
 docker service rm "$job" >/dev/null 2>&1 || true
 docker service create --quiet --name "$job" --mode replicated-job --replicas 1 \
   --constraint node.role==manager \
@@ -15,7 +16,7 @@ docker service create --quiet --name "$job" --mode replicated-job --replicas 1 \
   --env "STACK_NAME=${STACK_NAME}" \
   --env 'EXPECTED_SERVICES=intentional-test-service=1' \
   --entrypoint /usr/local/bin/swarm-check \
-  "$SWARM_CHECK_IMAGE" >/dev/null
+  "$swarm_check_image" >/dev/null
 
 deadline=$((SECONDS + 90))
 while (( SECONDS < deadline )); do
@@ -32,4 +33,3 @@ done
 docker service logs "$job" || true
 docker service rm "$job" >/dev/null
 echo "a deliberate DOWN push was sent; the regular swarm-check sends recovery within 60 seconds"
-

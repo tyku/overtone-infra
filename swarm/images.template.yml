@@ -1,0 +1,11 @@
+services:
+  gateway:
+    image: ${GATEWAY_REF}
+  frontend:
+    image: ${FRONTEND_REF}
+  api:
+    image: ${BACKEND_REF}
+  worker:
+    image: ${BACKEND_REF}
+  swarm-check:
+    image: ${SWARM_CHECK_REF}

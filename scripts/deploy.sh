@@ -12,10 +12,9 @@ if [[ "$(docker info --format '{{.Swarm.ControlAvailable}}')" != true ]]; then
   exit 1
 fi
 
-for image_var in GATEWAY_IMAGE FRONTEND_IMAGE BACKEND_IMAGE SWARM_CHECK_IMAGE; do
-  require_immutable_image "$image_var"
-done
-require_distinct_image_versions GATEWAY_IMAGE FRONTEND_IMAGE BACKEND_IMAGE SWARM_CHECK_IMAGE
+validate_image_manifest "$root/swarm/images.yml"
+docker stack config --compose-file "$root/swarm/stack.yml" \
+  --compose-file "$root/swarm/images.yml" >/dev/null
 for name_var in STACK_NAME API_NODE REDIS_NODE INFERENCE_NODE DATABASE_URL_SECRET \
   WORKER_DATABASE_URL_SECRET S3_ACCESS_KEY_ID_SECRET S3_SECRET_ACCESS_KEY_SECRET \
   REDIS_PASSWORD_SECRET TLS_CERT_SECRET TLS_KEY_SECRET UPTIME_PUSH_URL_SECRET; do
@@ -60,7 +59,7 @@ ensure_file_secret "$TLS_CERT_SECRET" TLS_CERT_FILE
 ensure_file_secret "$TLS_KEY_SECRET" TLS_KEY_FILE
 ensure_literal_secret "$UPTIME_PUSH_URL_SECRET" UPTIME_PUSH_URL
 
-export STACK_NAME GATEWAY_IMAGE FRONTEND_IMAGE BACKEND_IMAGE SWARM_CHECK_IMAGE
+export STACK_NAME
 export PUBLIC_SERVER_NAME ADMIN_ALLOW_RULES HTTP_PORT HTTPS_PORT KUMA_PORT
 export S3_ENDPOINT S3_REGION S3_BUCKET INFERENCE_GRPC_ADDRESS INFERENCE_GRPC_TLS
 export INFERENCE_LLM_BACKEND INFERENCE_SPECIALTY SESSION_TTL_HOURS MAX_UPLOAD_BYTES
@@ -76,7 +75,7 @@ case "$resolve_image" in
 esac
 
 docker stack deploy --with-registry-auth --resolve-image "$resolve_image" --prune --detach=true \
-  --compose-file "$root/swarm/stack.yml" "$STACK_NAME"
+  --compose-file "$root/swarm/stack.yml" --compose-file "$root/swarm/images.yml" "$STACK_NAME"
 "$root/scripts/wait-stack.sh" "$STACK_NAME" "${DEPLOY_TIMEOUT_SECONDS:-300}"
 if [[ "${SKIP_SMOKE:-false}" != true ]]; then
   "$root/scripts/smoke-test.sh"

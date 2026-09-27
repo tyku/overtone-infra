@@ -42,31 +42,27 @@ require_registry_config() {
   }
 }
 
-require_registry_images() {
-  local name value
-  for name in "$@"; do
-    value="${!name:-}"
-    require_value "$name"
+require_registry_image_refs() {
+  local value
+  for value in "$@"; do
     [[ "$value" == "$REGISTRY_HOST/"* ]] || {
-      echo "$name must use configured registry $REGISTRY_HOST: $value" >&2
+      echo "image must use configured registry $REGISTRY_HOST: $value" >&2
       return 1
     }
   done
 }
 
-require_immutable_image() {
-  local name="$1" value="${!1:-}"
-  require_value "$name"
+require_immutable_image_ref() {
+  local value="$1"
   if [[ "$value" == *:latest ]] || ! [[ "$value" =~ (@sha256:[0-9a-f]{64}|:[0-9a-f]{7,40})$ ]]; then
-    echo "$name must use an independent 7-40 character hex version tag or sha256 digest: $value" >&2
+    echo "image must use an independent 7-40 character hex version tag or sha256 digest: $value" >&2
     return 1
   fi
 }
 
 require_distinct_image_versions() {
-  local names=("$@") identities=() name value identity index
-  for name in "${names[@]}"; do
-    value="${!name:-}"
+  local values=("$@") identities=() value identity index
+  for value in "${values[@]}"; do
     if [[ "$value" == *@sha256:* ]]; then
       identity="${value##*@sha256:}"
     else
@@ -74,12 +70,44 @@ require_distinct_image_versions() {
     fi
     for index in "${!identities[@]}"; do
       if [[ "${identities[$index]}" == "$identity" ]]; then
-        echo "$name and ${names[$index]} share image version $identity; every image must be versioned independently" >&2
+        echo "$value and ${values[$index]} share image version $identity; every image must be versioned independently" >&2
         return 1
       fi
     done
     identities+=("$identity")
   done
+}
+
+image_manifest_refs() {
+  local manifest="$1"
+  [[ -s "$manifest" ]] || { echo "missing or empty image manifest: $manifest" >&2; return 1; }
+  docker compose -f "$manifest" config --images
+}
+
+validate_image_manifest() {
+  local manifest="$1" output unique_output services image api_image worker_image
+  local -a refs=() unique_refs=()
+  services="$(docker compose -f "$manifest" config --services | LC_ALL=C sort)" || return 1
+  [[ "$services" == $'api\nfrontend\ngateway\nswarm-check\nworker' ]] || {
+    echo "image manifest must define only api, frontend, gateway, swarm-check and worker" >&2
+    return 1
+  }
+  api_image="$(docker compose -f "$manifest" config --images api)" || return 1
+  worker_image="$(docker compose -f "$manifest" config --images worker)" || return 1
+  [[ "$api_image" == "$worker_image" ]] || {
+    echo "api and worker must use the same backend image" >&2
+    return 1
+  }
+  output="$(image_manifest_refs "$manifest")" || return 1
+  while IFS= read -r image; do refs+=("$image"); done <<< "$output"
+  (( ${#refs[@]} == 5 )) || { echo "image manifest must define five service images" >&2; return 1; }
+  unique_output="$(printf '%s\n' "${refs[@]}" | LC_ALL=C sort -u)"
+  while IFS= read -r image; do unique_refs+=("$image"); done <<< "$unique_output"
+  (( ${#unique_refs[@]} == 4 )) || { echo "image manifest must contain four distinct images" >&2; return 1; }
+  for image in "${unique_refs[@]}"; do
+    require_immutable_image_ref "$image" || return 1
+  done
+  require_distinct_image_versions "${unique_refs[@]}"
 }
 
 component_revision() {

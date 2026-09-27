@@ -9,18 +9,16 @@ require_command docker
 require_registry_config
 : "${REGISTRY_PUSH_TOKEN:?export REGISTRY_PUSH_TOKEN; never store it in .env}"
 
-images=(GATEWAY_IMAGE FRONTEND_IMAGE BACKEND_IMAGE SWARM_CHECK_IMAGE)
-require_registry_images "${images[@]}"
-for image_var in "${images[@]}"; do
-  require_immutable_image "$image_var"
-done
-require_distinct_image_versions "${images[@]}"
+validate_image_manifest "$root/swarm/images.yml"
+images="$(image_manifest_refs "$root/swarm/images.yml" | LC_ALL=C sort -u)"
+while IFS= read -r image; do
+  require_registry_image_refs "$image"
+done <<< "$images"
 
 printf '%s' "$REGISTRY_PUSH_TOKEN" |
   docker login "$REGISTRY_HOST" --username "$REGISTRY_USERNAME" --password-stdin
 
-for image_var in "${images[@]}"; do
-  image="${!image_var}"
+while IFS= read -r image; do
   echo "pushing $image"
   docker push "$image"
-done
+done <<< "$images"

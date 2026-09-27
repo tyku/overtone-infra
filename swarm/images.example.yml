@@ -1,0 +1,13 @@
+# Copy to images.yml for manual deploys, or let the release pipeline generate it.
+# Use independent immutable tags or image digests; never use latest.
+services:
+  gateway:
+    image: docker.io/awsfree80323/overtone-gateway:1111111
+  frontend:
+    image: docker.io/awsfree80323/overtone-frontend:2222222
+  api:
+    image: docker.io/awsfree80323/overtone-backend:3333333
+  worker:
+    image: docker.io/awsfree80323/overtone-backend:3333333
+  swarm-check:
+    image: docker.io/awsfree80323/overtone-swarm-check:4444444

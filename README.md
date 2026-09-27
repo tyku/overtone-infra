@@ -42,8 +42,8 @@ Prerequisites: three Linux VMs with Docker Engine already installed, an authenti
 ```bash
 cp .env.example .env
 # Set strong local credentials, actual VM/external IPs and node hostnames.
-# Set REGISTRY_HOST/REGISTRY_USERNAME and remote-registry image references.
-# Run `make versions`, then give every image its own returned content version.
+# Set REGISTRY_HOST/REGISTRY_USERNAME. `make build` writes image references
+# with independent content versions to swarm/images.yml.
 
 make cert
 make external-up-inference
@@ -64,7 +64,9 @@ export REGISTRY_PULL_TOKEN=...
 unset REGISTRY_PULL_TOKEN
 ```
 
-`make versions` calculates four independent content versions from the exact files used by each image. Changing frontend source does not change the backend, gateway or swarm-check version. `make build` only builds into the current Docker daemon; `make push` authenticates to `REGISTRY_HOST` and pushes all four references. `sync-and-deploy.sh` authenticates the manager without copying the token into `.env`, and Swarm forwards that pull authorization to workers via `--with-registry-auth`. Deploy rejects `latest`, non-hex version tags and a version identifier shared by two images; registry digests are also accepted.
+`make versions` calculates four independent content versions from the exact files used by each image. Changing frontend source does not change the backend, gateway or swarm-check version. `make build` builds into the current Docker daemon and writes the ignored `swarm/images.yml` override with those versioned image references; `make push` authenticates to `REGISTRY_HOST` and pushes those references. `sync-and-deploy.sh` authenticates the manager without copying the token into `.env`, and Swarm forwards that pull authorization to workers via `--with-registry-auth`. Deploy combines `swarm/stack.yml` with `swarm/images.yml` and rejects `latest`, non-hex version tags and a version identifier shared by two images; registry digests are also accepted.
+
+For a manual deploy without `make build`, copy `swarm/images.example.yml` to the ignored `swarm/images.yml` and replace all example references with the exact release tags or digests.
 
 Run verification against the manager/load-balancer address:
 
@@ -124,7 +126,7 @@ Docker Secrets are immutable. For rotation, create a new `*_v2` name in `.env` a
 
 Configure the `overtone` repository with variable `DOCKERHUB_USERNAME` and secrets `DOCKERHUB_TOKEN` for build/push and `OVERTONE_INFRA_REPO_TOKEN` for read-only checkout of this repository. Configure its `production` environment with variables `BASTION_HOST` (or a same-named secret), `BASTION_USER=overtone_deploy`, `MANAGER_PRIVATE_HOST` (or a same-named secret), and `DEPLOY_USER=overtone_deploy`; configure secrets `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, and `DOCKERHUB_TOKEN`. The environment `DOCKERHUB_TOKEN` must be a distinct pull-only credential and overrides the repository build/push token only in the deploy job. Rollback remains manual and component-scoped.
 
-Provision `/opt/overtone-infra/.env` directly on the Swarm manager before the first deploy, owned by `overtone_deploy` with mode `0600`. Keep this file out of GitHub and the repository. The release workflow preserves it during rsync and updates only its registry metadata and four immutable image references before running the existing `scripts/deploy.sh`.
+Provision `/opt/overtone-infra/.env` directly on the Swarm manager before the first deploy, owned by `overtone_deploy` with mode `0600`. Keep this file out of GitHub and the repository. The release workflow preserves it during rsync and writes only the separate `swarm/images.yml` manifest with immutable image digests before running `scripts/deploy.sh`; it never edits `.env`.
 
 Both workflows connect to SSH alias `overtone-manager-ci`, whose pinned config uses `ProxyJump overtone-bastion-ci`; the manager is addressed only by `MANAGER_PRIVATE_HOST`. `DEPLOY_KNOWN_HOSTS` must contain entries for the exact public bastion `HostName` and exact private manager `HostName`. Obtain each host public key through a trusted provider console or existing authenticated administration channel, verify its `ssh-keygen -lf` fingerprint against an independently communicated value, then store the resulting known-host lines in the environment secret. CI never runs `ssh-keyscan`, accepts a host key interactively, or disables strict checking. See [docs/CLOUD-RELEASE.md](docs/CLOUD-RELEASE.md) for the full setup.
 

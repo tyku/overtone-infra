@@ -1,6 +1,5 @@
 services:
   gateway:
-    image: ${GATEWAY_IMAGE}
     environment:
       PUBLIC_SERVER_NAME: ${PUBLIC_SERVER_NAME}
       ADMIN_ALLOW_RULES: ${ADMIN_ALLOW_RULES}
@@ -41,7 +40,6 @@ services:
         limits: {cpus: "0.50", memory: 128M}
 
   frontend:
-    image: ${FRONTEND_IMAGE}
     read_only: true
     volumes:
       - type: tmpfs
@@ -61,7 +59,6 @@ services:
         limits: {cpus: "0.25", memory: 64M}
 
   api:
-    image: ${BACKEND_IMAGE}
     entrypoint: ["/bin/sh", "/run/configs/start-backend.sh", "api"]
     environment: &backend_environment
       NODE_ENV: production
@@ -115,7 +112,6 @@ services:
         limits: {cpus: "1.50", memory: 1G}
 
   worker:
-    image: ${BACKEND_IMAGE}
     entrypoint: ["/bin/sh", "/run/configs/start-backend.sh", "worker"]
     environment:
       <<: *backend_environment
@@ -203,7 +199,6 @@ services:
         limits: {cpus: "0.50", memory: 384M}
 
   swarm-check:
-    image: ${SWARM_CHECK_IMAGE}
     environment:
       STACK_NAME: ${STACK_NAME}
       CHECK_INTERVAL_SECONDS: "60"

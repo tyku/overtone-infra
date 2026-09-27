@@ -5,3 +5,5 @@
 artifacts/
 .DS_Store
 .idea
+.env.production
+swarm/images.yml

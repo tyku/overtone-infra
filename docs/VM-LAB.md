@@ -20,7 +20,7 @@ export WORKER1_SSH=ubuntu@10.10.10.12 WORKER2_SSH=ubuntu@10.10.10.13
 
 Run PostgreSQL, MinIO and optionally the inference mock on a fourth reachable host or on the workstation with `EXTERNAL_BIND_ADDRESS` set to its private address. Set `DATABASE_URL`, `S3_ENDPOINT` and `INFERENCE_GRPC_ADDRESS` to that address—not to a Compose service name or loopback address.
 
-Set `REGISTRY_HOST` and `REGISTRY_USERNAME` in `.env`. Run `make versions`, assign each returned content version only to its matching remote-registry image reference, then build and push the four independent images. Registry tokens are shell-only secrets and must never be stored in `.env`:
+Set `REGISTRY_HOST` and `REGISTRY_USERNAME` in `.env`. `make build` calculates the four independent content versions, builds the images, and writes the ignored `swarm/images.yml` override with their tags. `make push` publishes those exact references. Registry tokens are shell-only secrets and must never be stored in `.env`:
 
 ```bash
 make build
